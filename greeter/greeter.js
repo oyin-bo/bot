@@ -11,12 +11,25 @@ async function greeter() {
   `;
   document.body.appendChild(termHost);
 
+  const measure = document.createElement('div');
+  measure.style.cssText = `
+  font-size: 2vh;
+  z-index: -1;
+  position: absolute;
+  opacity: 0;
+  `;
+  measure.textContent = 'M';
+  document.body.appendChild(measure);
+  const sz = measure.getBoundingClientRect();
+  document.body.removeChild(measure);
+
   /** @type {import('xterm').Terminal} */
   const terminal = new Terminal({
     allowTransparency: true,
     cursorBlink: true,
     cursorStyle: 'underline',
     disableStdin: false,
+    fontSize: Math.round(sz.height),
     theme: {
       background: '#00000000'
     }
