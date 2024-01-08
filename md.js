@@ -1,7 +1,34 @@
-<html>
-<head>
-<title>BOTs - BlueSky</title>
-<style>
+(function () { function run() {
+
+  var TITLE = 'BOTs';
+  if (window.disableMarkdownProcessing) {
+    setTimeout(function () {
+      // preload site.css for subsequent pages to be faster
+      loadCSS();
+    }, 4000);
+    return;
+  }
+
+  loadCSS();
+  loadMarkedScript();
+  document.write('<!--');
+  window.onload = processMarkdown;
+
+  function loadMarkedScript() {
+    var markedScriptElem = document.createElement('script');
+    markedScriptElem.src =
+      (/http/i.test(location.protocol || '') ? '//' : 'http://') +
+      'unpkg.com/marked';
+
+    var latestScript = document.scripts[document.scripts.length - 1];
+    latestScript.parentElement.appendChild(markedScriptElem);
+  }
+
+  function loadCSS() {
+    var style = document.createElement('style');
+    style.innerHTML = getFunctionComment(cssContainer);
+    (document.head || document.body).appendChild(style);
+    function cssContainer() {/*
   html {
     background-color: white;
     color: black;
@@ -27,7 +54,7 @@
       padding-left: 2em;
     }
 
-    h1.title {
+    h1 {
       color: #353300;
       font-size: 1000%;
       font-size: 35vw;
@@ -36,7 +63,7 @@
       font-family: monospace;
     }
 
-    h1.title .smaller-letter {
+    h1 sub {
       font-size: 69%;
       font-family: sans-serif;
       position: relative;
@@ -67,22 +94,86 @@
       padding-right: 0.3em;
     }
 
-</style>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#303a00">
-<link rel="shortcut icon" href="mushroom-icon.png" type="image/png">
-<link rel="icon" href="mushroom-icon.png" type="image/png">
-<link rel="apple-touch-icon" href="mushroom-icon.png" type="image/png">
-</head>
+  */}
+  }
 
-<body>
-<div class="div-inner">
 
-  <h1 class="title">BOT<span class="smaller-letter">s</span></h1>
-  <div class="subtitle">A life that is not human // <span class=logo><span class=butterfly>&#x1F98B;</span>BlueSky</span></div>
+  /** @param {Function} fn */
+  function getFunctionComment(fn) {
+    // first skip until (
+    // then skip until )
+    // then skip until {
+    // then take everything until the last }
+    var match =
+      /^[^\(]*\([^\)]*\)[^\{]*\{\s*\/\*\s*([\s\S]*\S)\s*\*\/\s*\}[^\}]*$/.exec(fn + '');
+  // /^[^\(]*\([^\)]*\)[^\{]*\{([ \t]*\n)([\s\S]*)([ \t]*\n[ \t]*)\}[^\}]*$/.exec(fn+'');
+    return match && match[1] || '';
+  }
 
-</div>
+  function processMarkdown() {
+    if (typeof marked === 'undefined' || !marked) {
+      return failedToLoadMarked();
+    }
 
-<script src="index.js"></script>
-</body></html>
+    var toHTML = typeof marked === 'function' ? marked : marked.marked;
+    var markdown = extractCommentContent();
+    var html = toHTML(markdown, { smartypants: true });
+    console.log({ markdown: markdown, html: html });
+
+    injectHead();
+
+    var container = document.createElement('div');
+    container.id = 'container';
+    container.className = 'path-' +
+      (location.pathname
+        .replace(/^\/+/, '').replace(/\/+$/, '')
+        || 'index.html'
+      )
+        .replace(/\.[a-z0-9]+$/, '').replace(/\.+/g, '-')
+        .replace(/\/+/g, '-');
+    container.className += ' document-' + container.className.split('-').reverse()[0];
+    container.innerHTML = html;
+
+    document.body.appendChild(container);
+
+    var header = document.body.querySelector &&
+      (document.body.querySelector('h1') || document.body.querySelector('h2'));
+
+    if (header) {
+      document.title = (header.textContent || header.innerText) + ' - \uD835\uDD46\ud835\udd50\ud835\udd40\u2115.\ud835\udd39\ud835\udd46';
+      if (location.pathname !== '/' && location.pathname !== '/index.html') {
+        var injectedHead = document.getElementById('head');
+        if (injectedHead) {
+          injectedHead.innerHTML = header.innerHT;
+        }
+      }
+    }
+
+    function extractCommentContent() {
+      var wholeHTML = document.body.parentElement.outerHTML;
+      var commentOpen = wholeHTML.indexOf('<' + '!--');
+      var commentClose = wholeHTML.lastIndexOf('--' + '>');
+      var inner = wholeHTML.slice(commentOpen + 4, commentClose);
+      return inner;
+    }
+
+    function failedToLoadMarked() {
+      var el = document.createElement('h2');
+      el.textContent = el.innerText = 'Marked library code failed to load: ' + typeof marked;
+      document.body.appendChild(el);
+    }
+
+    function injectHead() {
+      var head = document.createElement('div');
+      head.id = 'head';
+      var linkHome = document.createElement('a');
+      linkHome.style.cssText = 'color: inherit; text-decoration: inherit; font: inherit;';
+      linkHome.textContent = linkHome.innerText = TITLE;
+      linkHome.href = /file/i.test(location.protocol || '') ? './index.html' : '/';
+      head.appendChild(linkHome);
+      document.body.appendChild(head);
+    }
+
+  }
+
+};  run() })()
