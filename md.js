@@ -1,6 +1,7 @@
+// @ts-check
 (function () { function run() {
+  var TITLE = '\uD835\uDD39\uD835\uDD46\uD835\uDD4B\uD835\uDD64';
 
-  var TITLE = 'BOTs';
   if (window.disableMarkdownProcessing) {
     setTimeout(function () {
       // preload site.css for subsequent pages to be faster
@@ -51,7 +52,7 @@
 
     .div-inner {
       border-top: solid 1px #89cf45;
-      padding-left: 2em;
+      padding-left: 6vw;
     }
 
     h1 {
@@ -64,6 +65,7 @@
     }
 
     h1 sub {
+      vertical-align: unset;
       font-size: 69%;
       font-family: sans-serif;
       position: relative;
@@ -83,12 +85,12 @@
       font-family: monospace;
     }
 
-    .subtitle .logo {
+    .subtitle .bsky-logo {
       color: #d0f6ff;
       text-shadow: 0 1px 2px #00315d, 1px 0 2px #00315d, 0 -1px 2px #00315d, -1px 0 2px #00315d, 2px 4px 7px #002737, 2px 4px 16px #001937;
     }
 
-    .subtitle .logo .butterfly {
+    .subtitle .bsky-logo .butterfly {
       color: transparent;
       text-shadow: 0 0 0 #aecbff, 0 1px 2px #00315d, 1px 0 2px #00315d, 0 -1px 2px #00315d, -1px 0 2px #00315d, 2px 4px 7px #002737, 2px 4px 16px #001937;
       padding-right: 0.3em;
@@ -120,11 +122,9 @@
     var html = toHTML(markdown, { smartypants: true });
     console.log({ markdown: markdown, html: html });
 
-    injectHead();
-
     var container = document.createElement('div');
     container.id = 'container';
-    container.className = 'path-' +
+    container.className = 'div-inner path-' +
       (location.pathname
         .replace(/^\/+/, '').replace(/\/+$/, '')
         || 'index.html'
@@ -140,7 +140,11 @@
       (document.body.querySelector('h1') || document.body.querySelector('h2'));
 
     if (header) {
-      document.title = (header.textContent || header.innerText) + ' - \uD835\uDD46\ud835\udd50\ud835\udd40\u2115.\ud835\udd39\ud835\udd46';
+      document.title =
+        (header.textContent || header.innerText) === 'BOTs' ?
+        TITLE :
+        (header.textContent || header.innerText) + ' - ' + TITLE;
+
       if (location.pathname !== '/' && location.pathname !== '/index.html') {
         var injectedHead = document.getElementById('head');
         if (injectedHead) {
@@ -161,17 +165,6 @@
       var el = document.createElement('h2');
       el.textContent = el.innerText = 'Marked library code failed to load: ' + typeof marked;
       document.body.appendChild(el);
-    }
-
-    function injectHead() {
-      var head = document.createElement('div');
-      head.id = 'head';
-      var linkHome = document.createElement('a');
-      linkHome.style.cssText = 'color: inherit; text-decoration: inherit; font: inherit;';
-      linkHome.textContent = linkHome.innerText = TITLE;
-      linkHome.href = /file/i.test(location.protocol || '') ? './index.html' : '/';
-      head.appendChild(linkHome);
-      document.body.appendChild(head);
     }
 
   }
