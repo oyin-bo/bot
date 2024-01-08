@@ -34,13 +34,15 @@ async function greeter() {
   position: absolute;
   left: 0; top: 0;
   width: 100%; height: 100%;
+  border: solid 1em transparent;
+  box-sizing: border-box;
   `;
     const termHost = document.createElement('div');
     termHost.className = 'terminalHost';
-    termContainer.style.cssText = `
+    termHost.style.cssText = `
   position: relative;
   width: 100%; height: 100%;
-  border: solid 1em transparent;
+  box-sizing: border-box;
   `;
 
     document.body.appendChild(termContainer);
@@ -92,7 +94,10 @@ async function greeter() {
       return new Promise(resolve => {
         let buf = '';
         const dataSub = terminal.onData(data => {
-          buf += data;
+          buf += [...data].filter(ch =>
+            ch.length > 1 ||
+            ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 0x7F
+          ).join('');
           terminal.write(data);
         });
         const keySub = terminal.onKey(e => {
@@ -101,6 +106,12 @@ async function greeter() {
             keySub.dispose();
             terminal.write('\r\n');
             resolve(buf);
+          } if (e.key === '\x7F') {
+            if (buf) {
+              const newBuf = buf.slice(0, buf.length - 1);
+              buf = newBuf;
+              terminal.write('\b \b');
+            }
           }
         });
       });
