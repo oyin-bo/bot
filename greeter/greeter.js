@@ -18,13 +18,34 @@ async function greeter() {
   terminal.write('BlueSky APP PASSWORD will be cached\r\n');
   terminal.write('  in your browser local storage.\r\n');
   terminal.write('\r\n');
-  terminal.write('APP PWD> \x1B[38;5;3m');
-  const val = await terminal.read();
-  terminal.write('\x1B[0mAUTH: ' + val);
+  terminal.write(' APP USER>\x1B[38;5;3m');
+  const username = await terminal.read();
+  terminal.write('\x1B[0m');
+  terminal.write(' APP  PWD>\x1B[38;5;3m');
+  const password = await terminal.read(true /* password */);
+  terminal.write('\x1B[0m');
+  terminal.write(' connecting to BlueSky...');
+  try {
+    const atClient = await initAtClient({ identifier: username, password });
 
-  while (true) {
-    await delay(800);
-    terminal.write('  ' + new Date() + '\r\n');
+    terminal.write(' ' + atClient.pdsUrl + '\r\n');
+    terminal.write('\r\n');
+    terminal.write(' GITHUB TOKEN> \x1B[38;5;3m');
+    const githubToken = await terminal.read();
+    terminal.write('\x1B[0m');
+
+    terminal.write(' connecting to GitHub...');
+
+  } catch (error) {
+    if (error.stack) {
+      terminal.write(
+        '\r\n\x1B[38;5;197m' + error.message + '\x1B[0m\r\n' + 
+        (!error.stack ? '' :
+          (error.stack.indexOf(error.message) === 0 ?
+            error.stack.slice(error.message.length) :
+            error.stack) + '\r\n'
+        ));
+    }
   }
 
   function initTerminal() {
@@ -90,15 +111,16 @@ async function greeter() {
       return terminal.write(text);
     }
 
-    function read() {
+    /** @param {boolean} [silent] */
+    function read(silent) {
       return new Promise(resolve => {
         let buf = '';
         const dataSub = terminal.onData(data => {
-          buf += [...data].filter(ch =>
+          buf += data = [...data].filter(ch =>
             ch.length > 1 ||
             ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 0x7F
           ).join('');
-          terminal.write(data);
+          terminal.write(!silent ? data : data.replace(/./g, '*'));
         });
         const keySub = terminal.onKey(e => {
           if (e.key === '\r') {
@@ -116,6 +138,48 @@ async function greeter() {
         });
       });
     }
+  }
+
+  async function initAtClient({ identifier, password }) {
+    /** @type {import('@atproto').BskyAgent} */
+    const BskyAgent = (atproto.atproto || atproto).BskyAgent;
+
+    const oldXrpc = 'https://bsky.social/xrpc';
+    const newXrpc = 'https://bsky.network/xrpc';
+
+    const oldAtClient = new BskyAgent({ service: oldXrpc });
+    const res = await oldAtClient.login(
+      { identifier, password }
+    );
+
+    const serviceURL =
+      res?.data?.didDoc?.service?.find(svc => /pds/i.test(svc?.id || ''))?.serviceEndpoint;
+
+    const atClient = new BskyAgent({ service: serviceURL });
+    patchBskyAgentWithCORSProxy(atClient);
+    await atClient.login({ identifier, password });
+
+    return atClient;
+
+    function patchBskyAgentWithCORSProxy(atClient) {
+      atClient.com.atproto.sync._service.xrpc.baseClient.lex.assertValidXrpcOutput = function (lexUri, value, ...rest) {
+        return true;
+      };
+
+      if (typeof window !== "undefined" && window) {
+        const baseFetch = atClient.com.atproto.sync._service.xrpc.baseClient.fetch;
+        atClient.com.atproto.sync._service.xrpc.baseClient.fetch = function (reqUri, ...args) {
+          if (/(com.atproto.sync.listRepos)|(com.atproto.server.createSession)/.test(reqUri))
+            reqUri = "https://corsproxy.io/?" + reqUri;
+          return baseFetch.call(
+            atClient.com.atproto.sync._service.xrpc.baseClient,
+            reqUri,
+            ...args
+          );
+        };
+      }
+    }
+
   }
 
   function delay(msec) {
