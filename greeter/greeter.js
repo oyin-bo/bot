@@ -26,13 +26,16 @@ async function greeter() {
   terminal.write('\x1B[0m');
   terminal.write(' connecting to BlueSky...');
   try {
-    const atClient = await initAtClient({ identifier: username, password });
+    const aclients = await initAtClient({ identifier: username, password });
 
-    const mushroomMatch = String(atClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
+    const mushroomMatch = String(aclients.authenticatedAtClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
     terminal.write('Mushroom \x1B[38;5;51m' + mushroomMatch + '\x1B[0m\r\n');
     terminal.write('\r\n');
 
-    console.log('atClient: ', window.atClient = atClient);
+    console.log(aclients, aclients);
+    for (const k in aclients) {
+      window[k] = aclients[k];
+    }
 
   } catch (error) {
     if (error.stack) {
@@ -153,11 +156,14 @@ async function greeter() {
     const serviceURL =
       res?.data?.didDoc?.service?.find(svc => /pds/i.test(svc?.id || ''))?.serviceEndpoint;
 
-    const atClient = new BskyAgent({ service: serviceURL });
-    patchBskyAgentWithCORSProxy(atClient);
-    await atClient.login({ identifier, password });
+    const authenticatedAtClient = new BskyAgent({ service: serviceURL });
+    patchBskyAgentWithCORSProxy(authenticatedAtClient);
+    await authenticatedAtClient.login({ identifier, password });
 
-    return atClient;
+    const unaunthenticatedAtClient = new BskyAgent({ service: newXrpc });
+    patchBskyAgentWithCORSProxy(unaunthenticatedAtClient);
+
+    return { oldAtClient, authenticatedAtClient, unaunthenticatedAtClient };
 
     function patchBskyAgentWithCORSProxy(atClient) {
       atClient.com.atproto.sync._service.xrpc.baseClient.lex.assertValidXrpcOutput = function (lexUri, value, ...rest) {
