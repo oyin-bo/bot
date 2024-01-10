@@ -1,9 +1,10 @@
 const esbuild = require('esbuild');
+const path = require('path');
 
-async function build() {
+async function build(serve) {
 
-  await esbuild.build({
-    
+  /** @type {Parameters<typeof esbuild.build>} */
+  const options = {
     entryPoints: ['lib/index.js'],
     bundle: true,
     sourcemap: true,
@@ -29,7 +30,18 @@ async function build() {
       'node:node:worker_threads'
     ],
     outfile: 'static/libs.js'
-  });
+  };
+
+  if (serve) {
+    const ctx = await esbuild.context(options);
+    const server = await ctx.serve({
+      servedir: path.resolve(__dirname, 'static'),
+      fallback: 'index.html'
+    });
+    console.log('SERVE http://' + (server.host === '0.0.0.0' ? 'localhost' : server.host) + ':' + server.port + '/');
+  } else {
+      await esbuild.build(options);
+  }
 }
 
-build();
+build(!!process.argv.some(arg => /^\-*serve$/i.test(arg)));
