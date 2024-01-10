@@ -28,13 +28,11 @@ async function greeter() {
   try {
     const atClient = await initAtClient({ identifier: username, password });
 
-    terminal.write(' ' + atClient.pdsUrl + '\r\n');
+    const mushroomMatch = String(atClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
+    terminal.write('Mushroom \x1B[38;5;51m' + mushroomMatch + '\x1B[0m\r\n');
     terminal.write('\r\n');
-    terminal.write(' GITHUB TOKEN> \x1B[38;5;3m');
-    const githubToken = await terminal.read();
-    terminal.write('\x1B[0m');
 
-    terminal.write(' connecting to GitHub...');
+    console.log('atClient: ', window.atClient = atClient);
 
   } catch (error) {
     if (error.stack) {
