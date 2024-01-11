@@ -235,7 +235,26 @@ async function greeter() {
                   Math.min(new Date(current.createdAt).getTime(), oldest),
                   new Date(likeRecords[0].createdAt).getTime());
               }
+            } catch (errorProfile) {
+            }
 
+            try {
+
+              /** @type {import('@atproto/api').AppBskyGraphFollow.Record[] | undefined} */
+              const followRecords = !repoDescr.collections?.includes('app.bsky.graph.follow') ? undefined :
+                (await olderClient.com.atproto.repo.listRecords({
+                  collection: 'app.bsky.graph.follow',
+                  repo: did
+                }))?.data?.records?.map(r => r.value);
+
+              if (followRecords?.length) {
+                oldestRecord = oldestRecord ? Math.min(oldestRecord, new Date(followRecords[0].createdAt).getTime()) :
+                  new Date(followRecords[0].createdAt).getTime();
+
+                oldestRecord = followRecords.reduce((oldest, current) =>
+                  Math.min(new Date(current.createdAt).getTime(), oldest),
+                  oldestRecord);
+              }
             } catch (errorProfile) {
             }
 
@@ -248,7 +267,9 @@ async function greeter() {
           }
 
           if (oldPosts) {
-            tty.write(' older account: posted ' + new Date(postArray[postArray.length - 1].createdAt).toLocaleDateString() + '\r\n');
+            tty.write(' older account: posted ');
+            tty.blue(); tty.write(new Date(postArray[postArray.length - 1].createdAt).toLocaleDateString() + '\r\n');
+            tty.nocolor();
             happyTalkerStretchCount++;
             if (happyTalkerStretchCount >= 5)
               break;
@@ -258,10 +279,18 @@ async function greeter() {
           const mostRecentDate = new Date(postArray[0].createdAt).toLocaleDateString();
           const earliestDate = new Date(postArray[postArray.length - 1].createdAt).toLocaleDateString();
 
-          tty.write(' is a new poster/' + postArray.length);
+          tty.write(' is a new poster'); tty.blue(); tty.write('/' + postArray.length); tty.nocolor();
 
-          if (earliestDate === mostRecentDate) tty.write(' on ' + earliestDate + '\r\n');
-          else tty.write(' on ' + earliestDate + '..' + mostRecentDate + '\r\n');
+          if (earliestDate === mostRecentDate) {
+            tty.write(' on ');
+            tty.green(); tty.write(earliestDate + '\r\n'); tty.nocolor();
+          }
+          else {
+            tty.write(' on ');
+            tty.green(); tty.write(earliestDate + ''); tty.nocolor();
+            tty.write('..');
+            tty.green(); tty.write(mostRecentDate + '\r\n'); tty.nocolor();
+          }
 
           firstPosters.push({ did, handle: repoDescr.handle, posts: postArray });
           happyTalkerStretchCount = 0;
