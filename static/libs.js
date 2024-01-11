@@ -42639,7 +42639,7 @@ if (cid) {
     const terminal = new import_xterm.Terminal({
       allowTransparency: true,
       cursorBlink: true,
-      cursorStyle: "underline",
+      cursorStyle: "block",
       disableStdin: false,
       fontSize: Math.round(sz.height),
       theme: {

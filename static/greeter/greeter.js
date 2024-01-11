@@ -40,7 +40,7 @@ async function greeter() {
         tty.write(' of ');
         const mushroomMatch = String(oldLoginAtClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
         tty.blue();
-        tty.write(' ' + mushroomMatch);
+        tty.write(mushroomMatch);
         tty.nocolor();
         tty.write('? [y]\r\n');
         const replyY = await tty.read();
@@ -56,7 +56,7 @@ async function greeter() {
       const username = await tty.read();
       tty.nocolor();
   
-      tty.write('   and password:\r\n');
+      tty.write(' and password:\r\n');
       tty.green();
       const password = await tty.read(true /* password */);
       tty.nocolor();
@@ -89,23 +89,26 @@ async function greeter() {
 
     tty.write('Determining latest account page:');
     const newClient = new atproto.BskyAgent({ service: newXrpc });
-    patchBskyAgentWithCORSProxy(newClient);
+    patchBskyAgent(newClient);
 
-    let lowCursor = (await newClient.com.atproto.sync.listRepos({})).data.cursor;
+    let lowDt = (await newClient.com.atproto.sync.listRepos({})).data;
+    let lowCursor = lowDt.cursor;
     let highCursor;
     tty.green();
     tty.write(' ' + lowCursor);
     while (true) {
+      /** @type {string} */
       const twiceCursor = typeof lowCursor === 'string' ?
         String(Number(lowCursor) * 2) :
-        lowCursor * 2;
+        /** @type {*} */(lowCursor * 2);
 
       const nextDt = (await newClient.com.atproto.sync.listRepos({
-        cursor: lowCursor
+        cursor: twiceCursor
       })).data;
 
       if (nextDt?.repos?.length) {
         lowCursor = twiceCursor;
+        lowDt = nextDt;
         tty.write(' ' + lowCursor);
       } else {
         highCursor = twiceCursor;
@@ -138,16 +141,11 @@ async function greeter() {
       }
     }
 
-    tty.write('\r\nDetermining the last created account {cursor: ' + lowCursor + ' }:');
+    tty.write('\r\nThe last created account {cursor: ' + lowCursor + '}: ');
     const latestDt = (await newClient.com.atproto.sync.listRepos({
       cursor: lowCursor
     })).data;
-    const latestDID = latestDt.repos[latestDt.repos.length - 1].did;
-    tty.write(' ' + latestDID);
-    const repoDescr = (await newClient.com.atproto.repo.describeRepo({
-      repo: latestDID
-    })).data;
-    tty.write(' ' + repoDescr.collections.join(',') + '\r\n');
+    tty.write(latestDt.repos[latestDt.repos.length - 1].did + '\r\n');
 
 
   } catch (error) {
