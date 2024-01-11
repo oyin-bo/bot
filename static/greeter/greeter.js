@@ -173,6 +173,7 @@ async function greeter() {
       }
     }
 
+    /** @type {number} */
     let greetFirstPostersAfter;
     if (lastGreetPost) {
       tty.green();
@@ -189,13 +190,14 @@ async function greeter() {
 
     const pageSize = Math.floor(firstSlice.repos.length * 0.9);
 
-    /** @type {{ did: string, handle: string, post: import('@atproto/api').AppBskyFeedPost.Record }[]} */
+    /** @type {{ did: string, handle: string, posts: import('@atproto/api').AppBskyFeedPost.Record[] }[]} */
     let firstPosters = [];
+    let happyTalkerStretchCount = 0;
     for await (const didArray of iterateRecentAccounts(lowCursor, pageSize)) {
       for (const did of didArray) {
         let unknownDID = true;
         try {
-          const repoDescr = (await oldLoginAtClient.com.atproto.repo.describeRepo({ repo: did })).data;
+          const repoDescr = (await olderClient.com.atproto.repo.describeRepo({ repo: did })).data;
           tty.write(' ');
           tty.green();
           tty.write(repoDescr.handle);
@@ -203,40 +205,66 @@ async function greeter() {
 
           unknownDID = false;
 
-          let happyTalkerStretchCount = 0;
           /** @type {import('@atproto/api').AppBskyFeedPost.Record[] | undefined} */
           let postArray;
+          let oldPosts = false;
           for await (const postArrayEntry of iterateRecentPosts(did)) {
-            postArray = postArrayEntry;
-            break;
+            if (postArray) postArray = postArray.concat(postArrayEntry);
+            else postArray = postArrayEntry;
+
+            const earliestPost = postArrayEntry[postArrayEntry.length - 1];
+            if (new Date(earliestPost.createdAt).getTime() < greetFirstPostersAfter) {
+              oldPosts = true;
+              break;
+            }
           }
 
           if (!postArray?.length) {
-            tty.write(' no posts yet.\r\n');
+            let oldestRecord;
+            try {
+
+              /** @type {import('@atproto/api').AppBskyFeedLike.Record[] | undefined} */
+              const likeRecords = !repoDescr.collections?.includes('app.bsky.feed.like') ? undefined :
+                (await olderClient.com.atproto.repo.listRecords({
+                  collection: 'app.bsky.feed.like',
+                  repo: did
+                }))?.data?.records?.map(r => r.value);
+
+              if (likeRecords?.length) {
+                oldestRecord = likeRecords.reduce((oldest, current) =>
+                  Math.min(new Date(current.createdAt).getTime(), oldest),
+                  new Date(likeRecords[0].createdAt).getTime());
+              }
+
+            } catch (errorProfile) {
+            }
+
+            tty.write(
+              oldestRecord ? ' silent since ' + new Date(oldestRecord).toLocaleDateString() + '\r\n' :
+              ' silent.\r\n');
+
             happyTalkerStretchCount = 0;
-            break;
+            continue;
           }
 
-          const sortEarliestFirst = postArray.sort((p1, p2) => {
-            const dt1 = new Date(p1.createdAt).getTime() || Infinity;
-            const dt2 = new Date(p2.createdAt).getTime() || Infinity;
-            return dt1 - dt2;
-          });
-
-          if (sortEarliestFirst.length >= 2) {
-            const earliestDate = new Date(sortEarliestFirst[0].createdAt).toLocaleDateString();
-            const mostRecentDate = new Date(sortEarliestFirst[sortEarliestFirst.length - 1].createdAt).toLocaleDateString();
-
-            tty.write(' at least ' + sortEarliestFirst.length + ' posts');
-            if (earliestDate === mostRecentDate) tty.write(' on ' + earliestDate + '\r\n');
-            else tty.write(' on ' + earliestDate + '..' + mostRecentDate + '\r\n');
+          if (oldPosts) {
+            tty.write(' older account: posted ' + new Date(postArray[postArray.length - 1].createdAt).toLocaleDateString() + '\r\n');
             happyTalkerStretchCount++;
-
-            if (happyTalkerStretchCount > 10) break;
-          } else {
-            tty.write(' is a new poster! ' + new Date(sortEarliestFirst[0].createdAt).toLocaleString() + ' ' + sortEarliestFirst[0].text + '\r\n');
-            firstPosters.push({ did, handle: repoDescr.handle, post: sortEarliestFirst[0] });
+            if (happyTalkerStretchCount >= 5)
+              break;
+            else continue;
           }
+
+          const mostRecentDate = new Date(postArray[0].createdAt).toLocaleDateString();
+          const earliestDate = new Date(postArray[postArray.length - 1].createdAt).toLocaleDateString();
+
+          tty.write(' is a new poster/' + postArray.length);
+
+          if (earliestDate === mostRecentDate) tty.write(' on ' + earliestDate + '\r\n');
+          else tty.write(' on ' + earliestDate + '..' + mostRecentDate + '\r\n');
+
+          firstPosters.push({ did, handle: repoDescr.handle, posts: postArray });
+          happyTalkerStretchCount = 0;
         } catch (error) {
           let errorMessage = error.message || 'user data';
           if (unknownDID) {
@@ -252,14 +280,18 @@ async function greeter() {
           tty.nocolor();
         }
       }
+
+      if (happyTalkerStretchCount > 5) break;
+
+      tty.write('\r\n');
     }
 
     tty.write('\r\n' + firstPosters.length + ' first posters to greet:\r\n');
-    for (const { did, handle, post } of firstPosters) {
+    for (const { did, handle, posts } of firstPosters) {
       tty.blue();
       tty.write(handle + ' ');
       tty.nocolor();
-      tty.write(post.text + '\r\n\r\n');
+      tty.write(posts[posts.length - 1].text + '\r\n\r\n');
     }
 
     tty.write('OK, greeting is another step.');
