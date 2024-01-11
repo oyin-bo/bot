@@ -89,7 +89,7 @@ async function greeter() {
 
     tty.write('Determining latest account page:');
     const newClient = new atproto.BskyAgent({ service: newXrpc });
-    patchBskyAgent(newClient);
+    patchBskyAgentWithCORSProxy(newClient);
 
     let lowDt = (await newClient.com.atproto.sync.listRepos({})).data;
     let lowCursor = lowDt.cursor;
