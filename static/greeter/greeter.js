@@ -1,6 +1,11 @@
 // @ts-check
 /// <reference path="../../lib/types.d.ts" />
 
+const { BskyAgent } = require('@atproto/api');
+
+const oldXrpc = 'https://bsky.social/xrpc';
+const newXrpc = 'https://bsky.network/xrpc';
+
 async function greeter() {
   const tty = agnosticTerminal();
 
@@ -12,53 +17,72 @@ async function greeter() {
   await delay(300); tty.write('\r\n');
   await delay(900); tty.write('\r\n');
 
-  // TODO: check if user is logged in
-  await delay(1300);
-  tty.write('BlueSky APP PASSWORD will be cached\r\n');
-  tty.write('  in your browser local storage.\r\n\r\n');
-  tty.write(' APP USER>'); tty.green();
-  const username = await tty.read();
-  tty.nocolor();
-  tty.write(' APP  PWD>'); tty.green();
-  const password = await tty.read(true /* password */);
-  tty.nocolor();
-  tty.write(' connecting to BlueSky...');
+  let oldLoginAtClient = new atproto.BskyAgent({
+    service: oldXrpc,
+    persistSession: (evt, sess) => {
+      writeStored(sess);
+      authSession = sess;
+    }
+  });
+  patchBskyAgent(oldLoginAtClient)
+  let authSession = readStored();
   try {
-    const aclients = await agnosticAtClient({ identifier: username, password });
+    const sessReply = await oldLoginAtClient.resumeSession(readStored());
+    if (!sessReply?.data?.handle) {
+      authSession = undefined;
+    } else {
+      tty.write(' continue as ');
+      tty.green(); tty.write(sessReply.data.handle); tty.nocolor();
+      tty.write('? [y]\r\n');
+      const replyY = await tty.read();
+      if (!/y/i.test(replyY || '')) authSession = undefined;
+   }
+  } catch (error) {
+    authSession = undefined;
+  }
 
-    const mushroomMatch = String(aclients.authenticatedAtClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
-    tty.write('Mushroom ');
+  if (!authSession) {
+    tty.write('BlueSky login:\r\n');
+    tty.green();
+    const username = await tty.read();
+    tty.nocolor();
+  
+    tty.write('   and password:\r\n');
+    tty.green();
+    const password = await tty.read(true /* password */);
+    tty.nocolor();
+
+    if (!username || !password) {
+      tty.red();
+      tty.write('NO username or password provided\r\n');
+      tty.nocolor();
+      return;
+    }
+
+    tty.write(' connecting to BlueSky...');
+  try {
+    oldLoginAtClient = new BskyAgent({
+      service: oldXrpc,
+      persistSession: (evt, sess) => {
+        writeStored(sess);
+        authSession = sess;
+      }
+    });
+    patchBskyAgent(oldLoginAtClient);
+    await oldLoginAtClient.login({ identifier: username, password });
+
+    const mushroomMatch = String(oldLoginAtClient.pdsUrl).replace(/^https?:\/\//, '').split('.')[0];
+    tty.write('Host: ');
     tty.blue();
     tty.write(mushroomMatch);
     tty.nocolor();
     tty.write('\r\n\r\n');
 
-    console.log(aclients, aclients);
-    for (const k in aclients) {
-      window[k] = aclients[k];
-    }
-
-    const knownDIDs = {};
-    let lastReport = Date.now();
-    let sinceLastReport = 0;
-
-    const fire = firehose({
-      record: (op, commit, record) => {
-        if (!knownDIDs[commit.repo]) {
-          knownDIDs[commit.repo] = true;
-          tty.write(commit.repo.split(':').slice(-1)[0][0]);
-          sinceLastReport++;
-
-          if (Date.now() - lastReport > 1000) {
-            tty.blue();
-            tty.write(' ' + sinceLastReport + 'p/s ');
-            tty.nocolor();
-            lastReport = Date.now();
-            sinceLastReport = 0;
-          }
-        }
-      }
-    });
+    tty.write('Determining latest created account:');
+    const newClient = new BskyAgent({ service: newXrpc });
+    patchBskyAgentWithCORSProxy(newClient);
+    const reposFirst = await newClient.com.atproto.sync.listRepos({});
+    tty.write(reposFirst.data.cursor + '\r\n');
 
   } catch (error) {
     if (error.stack) {
@@ -77,6 +101,7 @@ async function greeter() {
   }
 } greeter();
 
+/** @returns {ReturnType<import('../../lib/init-at-client').initAtClient>} */
 function agnosticAtClient(args) {
   // in order for xterm not to blow
   if (typeof global !== 'undefined' && global) global.self = {};
@@ -120,4 +145,16 @@ function agnosticTerminal() {
   function nocolor() {
     terminal.write('\x1B[0m');
   }
+}
+
+function readStored() {
+  if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
+    const stored = localStorage.getItem('bot-greeter-session');
+    if (stored) return JSON.parse(stored);
+  }
+}
+
+function writeStored(data) {
+  if (typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function')
+    localStorage.setItem('bot-greeter-session', JSON.stringify(data));
 }

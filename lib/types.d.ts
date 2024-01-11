@@ -9,7 +9,8 @@ interface Global {
 
   oldFirehose: any;
   initXTerminal: typeof initXTerminal;
-  initAtClient: typeof initAtClient;
+  patchBskyAgent: typeof patchBskyAgent;
+  patchBskyAgentWithCORSProxy: typeof patchBskyAgentWithCORSProxy;
   firehose: typeof firehose;
 }
 
@@ -23,5 +24,6 @@ declare var multiformats: typeof import('multiformats');
 
 declare var oldFirehose: any;
 declare var initXTerminal: typeof import('./init-xterm').initXTerminal;
-declare var initAtClient: typeof import('./init-at-client').initAtClient;
+declare var patchBskyAgent: typeof import('./init-at-client').patchBskyAgent;
+declare var patchBskyAgentWithCORSProxy: typeof import('./init-at-client').patchBskyAgentWithCORSProxy;
 declare var firehose: typeof import('./firehose').firehose;
