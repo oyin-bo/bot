@@ -10,18 +10,16 @@ async function greeter() {
 
   const tty = agnosticTerminal();
 
-  await delay(600);
+  /** @type {import('@atproto/api').BskyAgent} */
+  let oldLoginAtClient;
+  /** @type {import('@atproto/api').BskyAgent} */
+  let newClient;
+  /** @type {import('@atproto/api').BskyAgent} */
+  let olderClient;
 
-  tty.write('Greeter BOT');
-  await delay(400); tty.write(' for ');
-  await delay(300); tty.blue(); tty.write('BlueSky'); tty.nocolor();
-  await delay(300); tty.write('\r\n');
-  await delay(900); tty.write('\r\n');
-
+  tty.write('Greeter BOT for '); tty.blue(); tty.write('BlueSky'); tty.nocolor(); tty.write('\r\n');
   try {
-
-
-    let oldLoginAtClient = new atproto.BskyAgent({
+    oldLoginAtClient = new atproto.BskyAgent({
       service: oldXrpc,
       persistSession: (evt, sess) => {
         writeStored(sess);
@@ -32,6 +30,7 @@ async function greeter() {
     let authSession = readStored();
     try {
       const sessReply = await oldLoginAtClient.resumeSession(readStored());
+      tty.write('\r\n');
       if (!sessReply?.data?.handle) {
         authSession = undefined;
       } else {
@@ -47,6 +46,7 @@ async function greeter() {
         if (replyY && !/y/i.test(replyY || '')) authSession = undefined;
       }
     } catch (error) {
+      tty.write('\r\n');
       authSession = undefined;
     }
 
@@ -87,11 +87,19 @@ async function greeter() {
       tty.write(' host.\r\n\r\n');
     }
 
+    olderClient = new atproto.BskyAgent({
+      service: oldXrpc
+    });
+    patchBskyAgent(olderClient);
+
+
     tty.write('Determining latest account page:');
-    const newClient = new atproto.BskyAgent({ service: newXrpc });
+    newClient = new atproto.BskyAgent({ service: newXrpc });
     patchBskyAgentWithCORSProxy(newClient);
 
-    let lowDt = (await newClient.com.atproto.sync.listRepos({})).data;
+    const firstSlice = (await newClient.com.atproto.sync.listRepos({})).data;
+    let lowDt = firstSlice;
+    /** @type {*} */
     let lowCursor = lowDt.cursor;
     let highCursor;
     tty.green();
@@ -117,6 +125,8 @@ async function greeter() {
         break;
       }
     }
+
+    tty.write('Finding the exact youngest account...');
 
     while (Number(highCursor) - 1 > Number(lowCursor)) {
       let midCursor = String(Math.floor((Number(lowCursor) + Number(highCursor)) / 2));
@@ -145,8 +155,114 @@ async function greeter() {
     const latestDt = (await newClient.com.atproto.sync.listRepos({
       cursor: lowCursor
     })).data;
-    tty.write(latestDt.repos[latestDt.repos.length - 1].did + '\r\n');
+    tty.write(latestDt.repos[latestDt.repos.length - 1].did + '\r\n\r\n');
 
+    tty.write('Finding your own last post with greeting...');
+    const ownRepoHead = (await oldLoginAtClient.com.atproto.sync.getHead({ did: oldLoginAtClient.session?.did })).data;
+    const ownRepoDescr = (await oldLoginAtClient.com.atproto.repo.describeRepo({ repo: oldLoginAtClient.session?.did })).data;
+
+    /** @type {import('@atproto/api').AppBskyFeedPost.Record | undefined} */
+    let lastGreetPost;
+    let lastPostCursor;
+    for await (const postArray of iterateRecentPosts(oldLoginAtClient.session?.did)) {
+      for (const post of postArray) {
+        if (/welcome|greet|ndewo|kedu|вітаю/i.test(post.text || '') && post.facets?.length) {
+          lastGreetPost = post;
+          break;
+        }
+      }
+    }
+
+    let greetFirstPostersAfter;
+    if (lastGreetPost) {
+      tty.green();
+      tty.write(' ' + lastGreetPost.text);
+      tty.nocolor();
+      tty.write(' ' + lastGreetPost.createdAt + '\r\n\r\n');
+      greetFirstPostersAfter = new Date(lastGreetPost.createdAt).getTime();
+    } else {
+      tty.write(' no greetings found yet, starting fresh!\r\n\r\n');
+      greetFirstPostersAfter = Date.now() - 1000 * 60 * 60 * 24 * 2; // last 2 days
+    }
+
+    tty.write('Filtering all accounts that posted only after ' + new Date(greetFirstPostersAfter).toLocaleString() + '...');
+
+    const pageSize = Math.floor(firstSlice.repos.length * 0.9);
+
+    /** @type {{ did: string, handle: string, post: import('@atproto/api').AppBskyFeedPost.Record }[]} */
+    let firstPosters = [];
+    for await (const didArray of iterateRecentAccounts(lowCursor, pageSize)) {
+      for (const did of didArray) {
+        let unknownDID = true;
+        try {
+          const repoDescr = (await oldLoginAtClient.com.atproto.repo.describeRepo({ repo: did })).data;
+          tty.write(' ');
+          tty.green();
+          tty.write(repoDescr.handle);
+          tty.nocolor();
+
+          unknownDID = false;
+
+          let happyTalkerStretchCount = 0;
+          /** @type {import('@atproto/api').AppBskyFeedPost.Record[] | undefined} */
+          let postArray;
+          for await (const postArrayEntry of iterateRecentPosts(did)) {
+            postArray = postArrayEntry;
+            break;
+          }
+
+          if (!postArray?.length) {
+            tty.write(' no posts yet.\r\n');
+            happyTalkerStretchCount = 0;
+            break;
+          }
+
+          const sortEarliestFirst = postArray.sort((p1, p2) => {
+            const dt1 = new Date(p1.createdAt).getTime() || Infinity;
+            const dt2 = new Date(p2.createdAt).getTime() || Infinity;
+            return dt1 - dt2;
+          });
+
+          if (sortEarliestFirst.length >= 2) {
+            const earliestDate = new Date(sortEarliestFirst[0].createdAt).toLocaleDateString();
+            const mostRecentDate = new Date(sortEarliestFirst[sortEarliestFirst.length - 1].createdAt).toLocaleDateString();
+
+            tty.write(' at least ' + sortEarliestFirst.length + ' posts');
+            if (earliestDate === mostRecentDate) tty.write(' on ' + earliestDate + '\r\n');
+            else tty.write(' on ' + earliestDate + '..' + mostRecentDate + '\r\n');
+            happyTalkerStretchCount++;
+
+            if (happyTalkerStretchCount > 10) break;
+          } else {
+            tty.write(' is a new poster! ' + new Date(sortEarliestFirst[0].createdAt).toLocaleString() + ' ' + sortEarliestFirst[0].text + '\r\n');
+            firstPosters.push({ did, handle: repoDescr.handle, post: sortEarliestFirst[0] });
+          }
+        } catch (error) {
+          let errorMessage = error.message || 'user data';
+          if (unknownDID) {
+            tty.green();
+            tty.write(' ' + did);
+            if (/find user/i.test(errorMessage)) {
+              errorMessage = 'raw';
+            }
+          }
+
+          tty.red();
+          tty.write(' ' + errorMessage + '\r\n');
+          tty.nocolor();
+        }
+      }
+    }
+
+    tty.write('\r\n' + firstPosters.length + ' first posters to greet:\r\n');
+    for (const { did, handle, post } of firstPosters) {
+      tty.blue();
+      tty.write(handle + ' ');
+      tty.nocolor();
+      tty.write(post.text + '\r\n\r\n');
+    }
+
+    tty.write('OK, greeting is another step.');
 
   } catch (error) {
     if (error.stack) {
@@ -157,6 +273,55 @@ async function greeter() {
             error.stack.slice(error.message.length) :
             error.stack) + '\r\n'
         ));
+    }
+  }
+
+  /**
+ * @param {string} lastPostCursor
+ * @param {number} pageSize
+ */
+  async function* iterateRecentAccounts(lastPostCursor, pageSize) {
+    if (!lastPostCursor) throw new Error('Cannot iterate backwards from nothing.');
+    let cursorNum = Number(lastPostCursor);
+    const seenAccounts = new Set();
+    while (true) {
+      const reposSlice = (await newClient.com.atproto.sync.listRepos({
+        cursor: String(cursorNum)
+      })).data;
+
+      if (!reposSlice.repos?.length) break;
+
+      const reportDids = [];
+      for (const r of reposSlice.repos) {
+        if (!seenAccounts.has(r.did))
+          reportDids.unshift(r.did);
+      }
+
+      if (reportDids.length) yield reportDids;
+
+      if (!reposSlice.cursor) break;
+
+      cursorNum = cursorNum - pageSize;
+    }
+  }
+
+  async function* iterateRecentPosts(did) {
+    let lastPostCursor;
+    while (true) {
+      const records = (await olderClient.com.atproto.repo.listRecords({
+        repo: did,
+        collection: 'app.bsky.feed.post',
+        cursor: lastPostCursor
+      })).data;
+
+      if (!records?.records?.length) break;
+      /** @type {import('@atproto/api').AppBskyFeedPost.Record[]} */
+      const posts = records.records.map(r => r.value);
+
+      yield posts;
+
+      if (!records.cursor) break;
+      else lastPostCursor = records.cursor;
     }
   }
 }

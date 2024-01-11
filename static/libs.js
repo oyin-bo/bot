@@ -42661,7 +42661,7 @@ if (cid) {
       return terminal.write(text);
     }
     function red() {
-      terminal.write("x1B[38;5;197m");
+      terminal.write("\x1B[38;5;197m");
     }
     function green() {
       terminal.write("\x1B[38;5;3m");
